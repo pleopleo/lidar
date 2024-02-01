@@ -1,8 +1,11 @@
 from anyio import sleep
 import api.msgpack as MsgpackApi
 import api.compact as CompactApi
-
+import requests
+import json
 import numpy as np
+from datetime import datetime
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -14,11 +17,15 @@ from mpl_toolkits.mplot3d import Axes3D
 PROTOCOL            = "MSGPACK"
 ALL_MEASURMENT_DATA = True
 PORT                = 2115
-IP                  = "192.168.1.2"
+IP                  = "192.168.1.50"
 NUMBER_SEGMENT      = 10
-PERCENTAGE_ACCEPTED  = 0.5
-DISTANCE_LIMITE     = 1000
-COUNTER_IT          = 100
+PERCENTAGE_ACCEPTED = 0.6
+DISTANCE_LIMITE     = 100
+COUNTER_IT          = 50
+
+DISTANCE_FIRST      = 100
+DISTANCE_SECONDE    = 200
+URL = "http://192.168.1.11/api/Input‐state"
 
 ##############################################################################################
 
@@ -31,7 +38,7 @@ status_system = 0
 counter = 0
 
 def check_array(x, y):
-      global status_system  # Declare status_system as a global variable
+      global status_system 
       global counter
 
       status = False
@@ -84,7 +91,53 @@ def check_array(x, y):
       return status
 
 def send_alarm():
-      print("alarme")
+      headers = {
+      'Content-Type': 'application/json'
+      }
+
+      # Obtenir l'heure actuelle au format requis
+      current_time = datetime.utcnow()
+      current_time_json = {
+      "uiYear": current_time.year,
+      "usiMonth": current_time.month,
+      "usiDay": current_time.day,
+      "usiHour": current_time.hour,
+      "usiMinute": current_time.minute,
+      "usiSec": current_time.second,
+      "udiUSec": current_time.microsecond
+      }
+
+      data = {
+      "header": {
+            "status": 0,
+            "message": "Ok"
+      },
+      "data": {
+            "InputState": {
+                  "uiVersionNumber": 1,
+                  "udiSystCount": 6739000,
+                  "aDigitalIn": [
+                  {
+                        "IOState": {
+                              "eIOState": 2
+                        }
+                  },
+                  {
+                        "IOState": {
+                              "eIOState": 2
+                        }
+                  }
+                  ],
+                  "aTimeBlock": [current_time_json]
+            }
+      }
+      }
+
+      response = requests.post(URL, headers=headers, data=json.dumps(data))
+
+      print(response.status_code)
+      print(response.json())
+
 
 if __name__ == "__main__":
 
@@ -141,25 +194,27 @@ if __name__ == "__main__":
             x_values_filtered = x_values[non_zero_indices]
             y_values_filtered = y_values[non_zero_indices]
 
+            # Assuming x_values_filtered is the array to be filtered
+            mask = x_values_filtered > DISTANCE_LIMITE
+            x_values_filtered = x_values_filtered[mask]
+            y_values_filtered = y_values_filtered[mask]
+
             if(start == 1):
                   # Add a line that is a straight line at a closer x-distance and fixed y-distance (1000)
-                  first_line_x = np.full(len(x_values_filtered), np.min(x_values_filtered) - 1000)  # Same length as x_values_filtered
+                  first_line_x = np.clip(np.full(len(x_values_filtered), np.min(x_values_filtered) - DISTANCE_FIRST), a_min=0, a_max=None)
                   first_line_y = np.linspace(np.max(y_values_filtered), np.min(y_values_filtered), len(y_values_filtered))
 
-                  second_line_x = np.full(len(x_values_filtered), np.min(x_values_filtered) - 2000)  # Same length as x_values_filtered
+                  second_line_x = np.clip(np.full(len(x_values_filtered), np.min(x_values_filtered) - DISTANCE_SECONDE), a_min=0, a_max=None)
                   second_line_y = np.linspace(np.max(y_values_filtered), np.min(y_values_filtered), len(y_values_filtered))
 
                   start = 0
-            
-            # Filter out values below DISTANCE in x_values_filtered
-            x_values_filtered = x_values_filtered[x_values_filtered > DISTANCE_LIMITE]
 
+            
+           
             status = check_array(x_values_filtered, y_values_filtered)
             if(status):
                   send_alarm()
                   
-
-            
             # # Plot the 2D scatter plot
             # plt.scatter(x_values_filtered, y_values_filtered)
             # plt.scatter(first_line_x, first_line_y)
